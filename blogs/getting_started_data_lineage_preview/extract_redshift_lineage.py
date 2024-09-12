@@ -143,7 +143,7 @@ def extract_queries_and_post_lineage(
     LEFT JOIN (
         SELECT query_id, LISTAGG(RTRIM(text)) WITHIN GROUP (ORDER BY sequence) AS query_txt
         FROM sys_query_text
-        WHERE sequence < 320
+        WHERE sequence < 16
         GROUP BY query_id
     ) qt ON qh.query_id = qt.query_id
     -- to get table_id
