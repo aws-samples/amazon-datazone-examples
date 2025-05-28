@@ -5,4 +5,4 @@ boto3==1.34.125
 
 # Required by the Amazon Redshift Python script.
 openlineage_sql==1.16.0
-redshift-connector==2.1.1
+redshift-connector==2.1.7
