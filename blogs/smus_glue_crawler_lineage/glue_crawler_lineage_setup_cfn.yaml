@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates S3 + DDB with sample data, IAM Role, and Glue Crawler targeting a provided Glue database.
+
+Parameters:
+  GlueDatabaseName:
+    Type: String
+    Description: Name of the existing Glue Database
+
+Resources:
+
+  ### S3 Bucket ###
+  SampleDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "ecomm-analytics-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+
+  ### S3 Sample JSON Upload via Lambda ###
+  S3PutObjectFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          def handler(event, context):
+              s3 = boto3.client('s3')
+              if event['RequestType'] in ['Create', 'Update']:
+                  s3.put_object(
+                      Bucket=event['ResourceProperties']['Bucket'],
+                      Key=event['ResourceProperties']['Key'],
+                      Body=event['ResourceProperties']['Content'],
+                      ContentType=event['ResourceProperties']['ContentType']
+                  )
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+    DependsOn: LambdaExecutionRole
+
+  SampleS3Object:
+    Type: Custom::S3PutObject
+    Properties:
+      ServiceToken: !GetAtt S3PutObjectFunction.Arn
+      Bucket: !Ref SampleDataBucket
+      Key: !Sub "clickstream/data.json"
+      Content: |
+          {
+            "session_id": "abc123",
+            "user_id": "u789",
+            "event_type": "product_view",
+            "product_id": "prod456",
+            "timestamp": "2025-06-04T09:23:12Z"
+          }
+      ContentType: application/json
+
+  ### DynamoDB Table ###
+  SampleDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: OrderTransactionTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: order_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: order_id
+          KeyType: RANGE
+
+  DynamoInsertFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          from decimal import Decimal
+
+          def handler(event, context):
+              ddb = boto3.resource('dynamodb')
+              table = ddb.Table(event['ResourceProperties']['TableName'])
+              try:
+                  if event['RequestType'] in ['Create', 'Update']:
+                      table.put_item(Item={
+                          "user_id": "u789",
+                          "order_id": "ord789",
+                          "product_id": "prod456",
+                          "order_total": Decimal("79.99"),
+                          "order_timestamp": "2025-06-04T09:27:10Z"
+                      })
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Message': str(e)})
+
+  InsertSampleDynamoItems:
+    Type: Custom::InsertDynamoItems
+    Properties:
+      ServiceToken: !GetAtt DynamoInsertFunction.Arn
+      TableName: !Ref SampleDynamoTable
+
+  ### IAM Role for Lambda (shared by S3 + DDB functions) ###
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: lambda-s3-ddb-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub "${SampleDataBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt SampleDynamoTable.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  ### IAM Role for Glue Crawler ###
+  GlueCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: glue-crawler-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: glue-access-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource: 
+                  - !GetAtt SampleDataBucket.Arn
+                  - !Sub "${SampleDataBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeTable
+                  - dynamodb:Scan
+                Resource: !GetAtt SampleDynamoTable.Arn
+
+  ### Glue Crawler ###
+  GlueCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: GlueLineageCrawler
+      Role: !GetAtt GlueCrawlerRole.Arn
+      DatabaseName: !Ref GlueDatabaseName
+      Targets:
+        S3Targets:
+          - Path: !Sub "s3://${SampleDataBucket}/clickstream/"
+        DynamoDBTargets:
+          - Path: !Ref SampleDynamoTable
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: LOG
+      RecrawlPolicy:
+        RecrawlBehavior: CRAWL_EVERYTHING
+
+Outputs:
+  S3Bucket:
+    Value: !Ref SampleDataBucket
+  DynamoDBTable:
+    Value: !Ref SampleDynamoTable
+  GlueCrawlerRole:
+    Value: !GetAtt GlueCrawlerRole.Arn
+  GlueCrawler:
+    Value: !Ref GlueCrawler
+
