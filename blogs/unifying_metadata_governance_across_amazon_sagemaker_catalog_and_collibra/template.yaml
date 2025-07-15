@@ -1,0 +1,461 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SMUS Collibra Integration Stack
+
+Parameters:
+  SMUSDomainId:
+    Type: String
+    Description: "The unique identifier for the SMUS (SageMaker Unified Studio) domain"
+  SMUSProducerProjectId:
+    Type: String
+    Description: "The project ID in SMUS that contains the data assets to be shared (producer side)"
+  SMUSConsumerProjectId:
+    Type: String
+    Description: "The project ID in SMUS where shared data assets will be accessed (consumer side)"
+  CollibraConfigSecretsName:
+    Type: String
+    Description: "The name of the AWS Secrets Manager secret containing Collibra configuration and credentials"
+  CollibraSubscriptionRequestCreationWorkflowId:
+    Type: String
+    Description: "The unique identifier for the Collibra workflow that creates subscription requests in Collibra"
+  CollibraSubscriptionRequestApprovalWorkflowId:
+    Type: String
+    Description: "The unique identifier for the Collibra workflow that approves subscription requests in Collibra"
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: "The S3 bucket containing the Lambda function deployment package"
+  LambdaCodeS3Key:
+    Type: String
+    Default: "lambda_build.zip"
+    Description: "The S3 key (path and filename) of the Lambda function deployment package within the specified bucket"
+  CollibraAwsProjectTypeId:
+    Type: String
+    Description: "The type ID for AWS projects in Collibra"
+  CollibraAwsProjectDomainId:
+    Type: String
+    Description: "The domain ID for AWS projects in Collibra"
+  CollibraAwsProjectAttributeTypeId:
+    Type: String
+    Description: "The attribute type ID for AWS projects in Collibra"
+  CollibraAwsProjectToAssetRelationTypeId:
+    Type: String
+    Description: "The relation type ID between AWS projects and assets in Collibra"
+  CollibraAwsUserTypeId:
+    Type: String
+    Description: "The type ID for AWS users in Collibra"
+  CollibraAwsUserDomainId:
+    Type: String
+    Description: "The domain ID for AWS users in Collibra"
+  CollibraAwsUserProjectAttributeTypeId:
+    Type: String
+    Description: "The attribute type ID for AWS user projects in Collibra"
+
+Resources:
+  SMUSCollibraIntegrationAdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SMUSCollibraIntegrationAdminRole
+      Description: A custom role assumed by any Lambda in this account
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: adminPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - datazone:AcceptSubscriptionRequest
+                  - datazone:CreateAssetRevision
+                  - datazone:CreateGlossary
+                  - datazone:CreateGlossaryTerm
+                  - datazone:CreateSubscriptionRequest
+                  - datazone:GetAsset
+                  - datazone:GetGlossary
+                  - datazone:GetGlossaryTerm
+                  - datazone:GetProject
+                  - datazone:GetUserProfile
+                  - datazone:ListProjectMemberships
+                  - datazone:ListSubscriptionRequests
+                  - datazone:ListSubscriptions
+                  - datazone:Search
+                  - datazone:SearchListings
+                  - datazone:SearchUserProfiles
+                  - datazone:UpdateGlossary
+                  - datazone:UpdateGlossaryTerm
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:ResourceAccount: !Ref AWS::AccountId
+
+  StartProjectUserListingSyncToCollibraLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: StartProjectUserListingSyncToCollibraLambda
+      Description: Lambda function that syncs projects, users, listings and their associations with each other from SMUS to Collibra
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Handler: handler.start_project_user_listing_sync_to_collibra_handler.handle_request
+      MemorySize: 10240
+      Timeout: 900
+      Runtime: python3.13
+      Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      Environment:
+        Variables:
+          SMUS_DOMAIN_ID: !Ref SMUSDomainId
+          SMUS_PRODUCER_PROJECT_ID: !Ref SMUSProducerProjectId
+          SMUS_CONSUMER_PROJECT_ID: !Ref SMUSConsumerProjectId
+          SMUS_REGION: !Ref AWS::Region
+          SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+          COLLIBRA_CONFIG_SECRETS_NAME: !Ref CollibraConfigSecretsName
+          COLLIBRA_SUBSCRIPTION_REQUEST_CREATION_WORKFLOW_ID: !Ref CollibraSubscriptionRequestCreationWorkflowId
+          COLLIBRA_SUBSCRIPTION_REQUEST_APPROVAL_WORKFLOW_ID: !Ref CollibraSubscriptionRequestApprovalWorkflowId
+          COLLIBRA_AWS_PROJECT_TYPE_ID: !Ref CollibraAwsProjectTypeId
+          COLLIBRA_AWS_PROJECT_DOMAIN_ID: !Ref CollibraAwsProjectDomainId
+          COLLIBRA_AWS_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsProjectAttributeTypeId
+          COLLIBRA_AWS_PROJECT_TO_ASSET_RELATION_TYPE_ID: !Ref CollibraAwsProjectToAssetRelationTypeId
+          COLLIBRA_AWS_USER_TYPE_ID: !Ref CollibraAwsUserTypeId
+          COLLIBRA_AWS_USER_DOMAIN_ID: !Ref CollibraAwsUserDomainId
+          COLLIBRA_AWS_USER_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsUserProjectAttributeTypeId
+
+  StartSubscriptionRequestSyncToCollibraLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: StartSubscriptionRequestSyncToCollibraLambda
+      Description: Lambda function that syncs subscription requests from SMUS to Collibra
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Handler: handler.start_subscription_request_sync_to_collibra_handler.handle_request
+      MemorySize: 10240
+      Timeout: 900
+      Runtime: python3.13
+      Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      Environment:
+        Variables:
+          SMUS_DOMAIN_ID: !Ref SMUSDomainId
+          SMUS_PRODUCER_PROJECT_ID: !Ref SMUSProducerProjectId
+          SMUS_CONSUMER_PROJECT_ID: !Ref SMUSConsumerProjectId
+          SMUS_REGION: !Ref AWS::Region
+          SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+          COLLIBRA_CONFIG_SECRETS_NAME: !Ref CollibraConfigSecretsName
+          COLLIBRA_SUBSCRIPTION_REQUEST_CREATION_WORKFLOW_ID: !Ref CollibraSubscriptionRequestCreationWorkflowId
+          COLLIBRA_SUBSCRIPTION_REQUEST_APPROVAL_WORKFLOW_ID: !Ref CollibraSubscriptionRequestApprovalWorkflowId
+          COLLIBRA_AWS_PROJECT_TYPE_ID: !Ref CollibraAwsProjectTypeId
+          COLLIBRA_AWS_PROJECT_DOMAIN_ID: !Ref CollibraAwsProjectDomainId
+          COLLIBRA_AWS_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsProjectAttributeTypeId
+          COLLIBRA_AWS_PROJECT_TO_ASSET_RELATION_TYPE_ID: !Ref CollibraAwsProjectToAssetRelationTypeId
+          COLLIBRA_AWS_USER_TYPE_ID: !Ref CollibraAwsUserTypeId
+          COLLIBRA_AWS_USER_DOMAIN_ID: !Ref CollibraAwsUserDomainId
+          COLLIBRA_AWS_USER_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsUserProjectAttributeTypeId
+
+  StartSubscriptionRequestSyncToSMUSLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: StartSubscriptionRequestSyncToSMUSLambda
+      Description: Lambda function that syncs subscription requests from Collibra to SMUS
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Handler: handler.start_subscription_request_sync_to_smus_handler.handle_request
+      MemorySize: 10240
+      Timeout: 900
+      Runtime: python3.13
+      Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      Environment:
+        Variables:
+          SMUS_DOMAIN_ID: !Ref SMUSDomainId
+          SMUS_PRODUCER_PROJECT_ID: !Ref SMUSProducerProjectId
+          SMUS_CONSUMER_PROJECT_ID: !Ref SMUSConsumerProjectId
+          SMUS_REGION: !Ref AWS::Region
+          SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+          COLLIBRA_CONFIG_SECRETS_NAME: !Ref CollibraConfigSecretsName
+          COLLIBRA_SUBSCRIPTION_REQUEST_CREATION_WORKFLOW_ID: !Ref CollibraSubscriptionRequestCreationWorkflowId
+          COLLIBRA_SUBSCRIPTION_REQUEST_APPROVAL_WORKFLOW_ID: !Ref CollibraSubscriptionRequestApprovalWorkflowId
+          COLLIBRA_AWS_PROJECT_TYPE_ID: !Ref CollibraAwsProjectTypeId
+          COLLIBRA_AWS_PROJECT_DOMAIN_ID: !Ref CollibraAwsProjectDomainId
+          COLLIBRA_AWS_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsProjectAttributeTypeId
+          COLLIBRA_AWS_PROJECT_TO_ASSET_RELATION_TYPE_ID: !Ref CollibraAwsProjectToAssetRelationTypeId
+          COLLIBRA_AWS_USER_TYPE_ID: !Ref CollibraAwsUserTypeId
+          COLLIBRA_AWS_USER_DOMAIN_ID: !Ref CollibraAwsUserDomainId
+          COLLIBRA_AWS_USER_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsUserProjectAttributeTypeId
+
+  StartSubscriptionRequestSyncToCollibraRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.datazone
+        detail-type:
+          - Subscription Request Created
+      Targets:
+        - Arn: !GetAtt StartSubscriptionRequestSyncToCollibraLambda.Arn
+          Id: StartSubscriptionRequestSyncToCollibraTarget
+
+  StartSubscriptionRequestSyncToCollibraLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StartSubscriptionRequestSyncToCollibraLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StartSubscriptionRequestSyncToCollibraRule.Arn
+
+  GlossarySyncLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GlossarySyncLambda
+      Description: Lambda function that syncs glossary terms from Collibra to SMUS
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Handler: handler.glossary_sync_handler.handle_request
+      MemorySize: 10240
+      Timeout: 900
+      Runtime: python3.13
+      Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      Environment:
+        Variables:
+          SMUS_DOMAIN_ID: !Ref SMUSDomainId
+          SMUS_PRODUCER_PROJECT_ID: !Ref SMUSProducerProjectId
+          SMUS_CONSUMER_PROJECT_ID: !Ref SMUSConsumerProjectId
+          SMUS_REGION: !Ref AWS::Region
+          SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+          COLLIBRA_CONFIG_SECRETS_NAME: !Ref CollibraConfigSecretsName
+          COLLIBRA_SUBSCRIPTION_REQUEST_CREATION_WORKFLOW_ID: !Ref CollibraSubscriptionRequestCreationWorkflowId
+          COLLIBRA_SUBSCRIPTION_REQUEST_APPROVAL_WORKFLOW_ID: !Ref CollibraSubscriptionRequestApprovalWorkflowId
+          COLLIBRA_AWS_PROJECT_TYPE_ID: !Ref CollibraAwsProjectTypeId
+          COLLIBRA_AWS_PROJECT_DOMAIN_ID: !Ref CollibraAwsProjectDomainId
+          COLLIBRA_AWS_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsProjectAttributeTypeId
+          COLLIBRA_AWS_PROJECT_TO_ASSET_RELATION_TYPE_ID: !Ref CollibraAwsProjectToAssetRelationTypeId
+          COLLIBRA_AWS_USER_TYPE_ID: !Ref CollibraAwsUserTypeId
+          COLLIBRA_AWS_USER_DOMAIN_ID: !Ref CollibraAwsUserDomainId
+          COLLIBRA_AWS_USER_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsUserProjectAttributeTypeId
+
+  GlossaryHierarchyEstablisherLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GlossaryHierarchyEstablisherLambda
+      Description: Lambda function that syncs glossary term hierarchy from Collibra to SMUS
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Handler: handler.glossary_term_hierarchy_establisher_handler.handle_request
+      MemorySize: 10240
+      Timeout: 900
+      Runtime: python3.13
+      Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      Environment:
+        Variables:
+          SMUS_DOMAIN_ID: !Ref SMUSDomainId
+          SMUS_PRODUCER_PROJECT_ID: !Ref SMUSProducerProjectId
+          SMUS_CONSUMER_PROJECT_ID: !Ref SMUSConsumerProjectId
+          SMUS_REGION: !Ref AWS::Region
+          SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+          COLLIBRA_CONFIG_SECRETS_NAME: !Ref CollibraConfigSecretsName
+          COLLIBRA_SUBSCRIPTION_REQUEST_CREATION_WORKFLOW_ID: !Ref CollibraSubscriptionRequestCreationWorkflowId
+          COLLIBRA_SUBSCRIPTION_REQUEST_APPROVAL_WORKFLOW_ID: !Ref CollibraSubscriptionRequestApprovalWorkflowId
+          COLLIBRA_AWS_PROJECT_TYPE_ID: !Ref CollibraAwsProjectTypeId
+          COLLIBRA_AWS_PROJECT_DOMAIN_ID: !Ref CollibraAwsProjectDomainId
+          COLLIBRA_AWS_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsProjectAttributeTypeId
+          COLLIBRA_AWS_PROJECT_TO_ASSET_RELATION_TYPE_ID: !Ref CollibraAwsProjectToAssetRelationTypeId
+          COLLIBRA_AWS_USER_TYPE_ID: !Ref CollibraAwsUserTypeId
+          COLLIBRA_AWS_USER_DOMAIN_ID: !Ref CollibraAwsUserDomainId
+          COLLIBRA_AWS_USER_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsUserProjectAttributeTypeId
+
+  AssetMetadataSyncLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: AssetMetadataSyncLambda
+      Description: Lambda function that syncs asset metadata from Collibra to SMUS
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Handler: handler.asset_metadata_sync_handler.handle_request
+      MemorySize: 10240
+      Timeout: 900
+      Runtime: python3.13
+      Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      Environment:
+        Variables:
+          SMUS_DOMAIN_ID: !Ref SMUSDomainId
+          SMUS_PRODUCER_PROJECT_ID: !Ref SMUSProducerProjectId
+          SMUS_CONSUMER_PROJECT_ID: !Ref SMUSConsumerProjectId
+          SMUS_REGION: !Ref AWS::Region
+          SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+          COLLIBRA_CONFIG_SECRETS_NAME: !Ref CollibraConfigSecretsName
+          COLLIBRA_SUBSCRIPTION_REQUEST_CREATION_WORKFLOW_ID: !Ref CollibraSubscriptionRequestCreationWorkflowId
+          COLLIBRA_SUBSCRIPTION_REQUEST_APPROVAL_WORKFLOW_ID: !Ref CollibraSubscriptionRequestApprovalWorkflowId
+          COLLIBRA_AWS_PROJECT_TYPE_ID: !Ref CollibraAwsProjectTypeId
+          COLLIBRA_AWS_PROJECT_DOMAIN_ID: !Ref CollibraAwsProjectDomainId
+          COLLIBRA_AWS_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsProjectAttributeTypeId
+          COLLIBRA_AWS_PROJECT_TO_ASSET_RELATION_TYPE_ID: !Ref CollibraAwsProjectToAssetRelationTypeId
+          COLLIBRA_AWS_USER_TYPE_ID: !Ref CollibraAwsUserTypeId
+          COLLIBRA_AWS_USER_DOMAIN_ID: !Ref CollibraAwsUserDomainId
+          COLLIBRA_AWS_USER_PROJECT_ATTRIBUTE_TYPE_ID: !Ref CollibraAwsUserProjectAttributeTypeId
+
+  SMUSCollibraIntegrationBusinessMetadataSyncWorkflow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: SMUSCollibraIntegrationBusinessMetadataSyncWorkflow
+      StateMachineType: STANDARD
+      DefinitionString: !Sub |
+        {
+          "StartAt": "GlossarySyncLambda",
+          "States": {
+            "GlossarySyncLambda": {
+              "Type": "Task",
+              "Resource": "${GlossarySyncLambda.Arn}",
+              "Next": "Are more glossary terms available?",
+              "ResultPath": "$"
+            },
+            "Are more glossary terms available?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "And": [
+                    {
+                      "Variable": "$.last_seen_glossary_term_id",
+                      "IsPresent": true
+                    },
+                    {
+                      "Variable": "$.last_seen_glossary_term_id",
+                      "IsNull": false
+                    }
+                  ],
+                  "Next": "GlossarySyncLambda"
+                }
+              ],
+              "Default": "GlossaryHierarchyEstablisherLambda"
+            },
+            "GlossaryHierarchyEstablisherLambda": {
+              "Type": "Task",
+              "Resource": "${GlossaryHierarchyEstablisherLambda.Arn}",
+              "Next": "AssetMetadataSyncLambda",
+              "ResultPath": "$"
+            },
+            "AssetMetadataSyncLambda": {
+              "Type": "Task",
+              "Resource": "${AssetMetadataSyncLambda.Arn}",
+              "Next": "Are more assets available?",
+              "ResultPath": "$"
+            },
+            "Are more assets available?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "And": [
+                    {
+                      "Variable": "$.last_seen_asset_id",
+                      "IsPresent": true
+                    },
+                    {
+                      "Variable": "$.last_seen_asset_id",
+                      "IsNull": false
+                    }
+                  ],
+                  "Next": "AssetMetadataSyncLambda"
+                }
+              ],
+              "Default": "Workflow Complete"
+            },
+            "Workflow Complete": {
+              "Type": "Succeed"
+            }
+          }
+        }
+      RoleArn: !GetAtt StepFunctionsExecutionRole.Arn
+
+  StepFunctionsExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaInvoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt GlossarySyncLambda.Arn
+                  - !GetAtt GlossaryHierarchyEstablisherLambda.Arn
+                  - !GetAtt AssetMetadataSyncLambda.Arn
+
+  BusinessMetadataSyncWorkflowTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(5 minutes)
+      Targets:
+        - Arn: !Ref SMUSCollibraIntegrationBusinessMetadataSyncWorkflow
+          Id: BusinessMetadataSyncWorkflowTarget
+          RoleArn: !GetAtt EventsInvokeStepFunctionsRole.Arn
+
+  EventsInvokeStepFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StepFunctionsInvoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Ref SMUSCollibraIntegrationBusinessMetadataSyncWorkflow
+
+  StartSubscriptionRequestSyncToSMUSLambdaTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt StartSubscriptionRequestSyncToSMUSLambda.Arn
+          Id: StartSubscriptionRequestSyncToSMUSTarget
+
+  StartSubscriptionRequestSyncToSMUSLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StartSubscriptionRequestSyncToSMUSLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StartSubscriptionRequestSyncToSMUSLambdaTriggerRule.Arn
+
+  StartProjectUserListingSyncToCollibraLambdaTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt StartProjectUserListingSyncToCollibraLambda.Arn
+          Id: StartSubscriptionRequestSyncToSMUSTarget
+
+  StartProjectUserListingSyncToCollibraLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StartProjectUserListingSyncToCollibraLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StartProjectUserListingSyncToCollibraLambdaTriggerRule.Arn

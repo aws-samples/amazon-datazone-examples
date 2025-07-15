@@ -1,0 +1,6 @@
+INCOMING_RELATIONS_KEY = "incomingRelations"
+SOURCE_KEY = "source"
+DISPLAY_NAME_KEY = "displayName"
+FULL_NAME_KEY = "fullName"
+ID_KEY = "id"
+NAME_KEY = "name"
