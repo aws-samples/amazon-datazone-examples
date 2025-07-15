@@ -19,6 +19,7 @@ from utils.queries import GET_BUSINESS_TERMS_QUERY, GET_BUSINESS_TERMS_WITH_CURS
 class CollibraAdapter:
     COLLIBRA_GRAPHQL_URL_FORMAT = "https://{collibra_config_url}/graphql/knowledgeGraph/v1"
     COLLIBRA_REST_URL_FORMAT = "https://{collibra_config_url}/rest/2.0/{resource}"
+    DEFAULT_API_TIMEOUT_IN_SECONDS = 180
 
     def __init__(self, logger):
         self.__logger = logger
@@ -111,7 +112,8 @@ class CollibraAdapter:
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-            }
+            },
+            timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS
         )
 
         if self.__is_response_status_ok(response.status_code):
@@ -128,7 +130,8 @@ class CollibraAdapter:
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-            }
+            },
+            timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS
         )
 
         if self.__is_response_status_ok(response.status_code):
@@ -195,7 +198,8 @@ class CollibraAdapter:
         payload = {"name": project_name,
                    "domainId": COLLIBRA_AWS_PROJECT_DOMAIN_ID,
                    "typeId": COLLIBRA_AWS_PROJECT_TYPE_ID}
-        response = requests.post(url, auth=(self.__config.username, self.__config.password), json=payload)
+        response = requests.post(url, auth=(self.__config.username, self.__config.password), json=payload,
+                                 timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS)
 
         if self.__is_response_status_ok(response.status_code):
             return response.json()
@@ -206,7 +210,8 @@ class CollibraAdapter:
         url = CollibraAdapter.COLLIBRA_REST_URL_FORMAT.format(collibra_config_url=self.__config.url,
                                                               resource=f"assets/{collibra_project_id}/attributes")
         payload = {"typeId": COLLIBRA_AWS_PROJECT_ATTRIBUTE_TYPE_ID, "values": [smus_project_id]}
-        response = requests.put(url, auth=(self.__config.username, self.__config.password), json=payload)
+        response = requests.put(url, auth=(self.__config.username, self.__config.password), json=payload,
+                                timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS)
         if self.__is_response_status_ok(response.status_code):
             self.__logger.info(f'Successfully added project attribute for project {collibra_project_id}')
             return response.json()
@@ -217,7 +222,8 @@ class CollibraAdapter:
         url = CollibraAdapter.COLLIBRA_REST_URL_FORMAT.format(collibra_config_url=self.__config.url,
                                                               resource=f"relations")
         payload = {"sourceId": source_id, "targetId": target_id, "typeId": relation_id}
-        response = requests.post(url, auth=(self.__config.username, self.__config.password), json=payload)
+        response = requests.post(url, auth=(self.__config.username, self.__config.password), json=payload,
+                                 timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS)
 
         if not self.__is_response_status_ok(response.status_code):
             raise Exception(
@@ -256,7 +262,8 @@ class CollibraAdapter:
             "domainId": COLLIBRA_AWS_USER_DOMAIN_ID,
             "typeId": COLLIBRA_AWS_USER_TYPE_ID
         }
-        response = requests.post(url, auth=(self.__config.username, self.__config.password), json=payload)
+        response = requests.post(url, auth=(self.__config.username, self.__config.password), json=payload,
+                                 timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS)
         if self.__is_response_status_ok(response.status_code):
             self.__logger.info(f'Successfully created user {username} in Collibra')
 
@@ -272,7 +279,8 @@ class CollibraAdapter:
             "typeId": COLLIBRA_AWS_USER_PROJECT_ATTRIBUTE_TYPE_ID,
             "value": project_name
         }
-        response = requests.post(url, auth=(self.__config.username, self.__config.password), json=payload)
+        response = requests.post(url, auth=(self.__config.username, self.__config.password), json=payload,
+                                 timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS)
 
         return response.json()
 
@@ -291,7 +299,8 @@ class CollibraAdapter:
                 "Content-Type": "application/json",
                 "Accept": "application/json",
                 "Authorization": f"Basic {self.__authorization_token}"
-            }
+            },
+            timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS
         )
 
     @staticmethod

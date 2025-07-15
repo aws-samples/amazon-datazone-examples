@@ -50,6 +50,39 @@ Parameters:
     Description: "The attribute type ID for AWS user projects in Collibra"
 
 Resources:
+  SMUSCollibraIntegrationAdminPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Custom policy for Collibra Integration Admin Role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - datazone:AcceptSubscriptionRequest
+              - datazone:CreateAssetRevision
+              - datazone:CreateGlossary
+              - datazone:CreateGlossaryTerm
+              - datazone:CreateSubscriptionRequest
+              - datazone:GetAsset
+              - datazone:GetGlossary
+              - datazone:GetGlossaryTerm
+              - datazone:GetProject
+              - datazone:GetUserProfile
+              - datazone:ListProjectMemberships
+              - datazone:ListSubscriptionRequests
+              - datazone:ListSubscriptions
+              - datazone:Search
+              - datazone:SearchListings
+              - datazone:SearchUserProfiles
+              - datazone:UpdateGlossary
+              - datazone:UpdateGlossaryTerm
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:ResourceAccount: !Ref AWS::AccountId
+
   SMUSCollibraIntegrationAdminRole:
     Type: AWS::IAM::Role
     Properties:
@@ -57,6 +90,7 @@ Resources:
       Description: A custom role assumed by any Lambda in this account
       ManagedPolicyArns:
         - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Ref SMUSCollibraIntegrationAdminPolicy
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -67,36 +101,6 @@ Resources:
             Condition:
               StringEquals:
                 aws:SourceAccount: !Ref AWS::AccountId
-      Policies:
-        - PolicyName: adminPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                  - datazone:AcceptSubscriptionRequest
-                  - datazone:CreateAssetRevision
-                  - datazone:CreateGlossary
-                  - datazone:CreateGlossaryTerm
-                  - datazone:CreateSubscriptionRequest
-                  - datazone:GetAsset
-                  - datazone:GetGlossary
-                  - datazone:GetGlossaryTerm
-                  - datazone:GetProject
-                  - datazone:GetUserProfile
-                  - datazone:ListProjectMemberships
-                  - datazone:ListSubscriptionRequests
-                  - datazone:ListSubscriptions
-                  - datazone:Search
-                  - datazone:SearchListings
-                  - datazone:SearchUserProfiles
-                  - datazone:UpdateGlossary
-                  - datazone:UpdateGlossaryTerm
-                Resource: "*"
-                Condition:
-                  StringEquals:
-                    aws:ResourceAccount: !Ref AWS::AccountId
 
   StartProjectUserListingSyncToCollibraLambda:
     Type: AWS::Lambda::Function
@@ -111,6 +115,7 @@ Resources:
       Timeout: 900
       Runtime: python3.13
       Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      ReservedConcurrentExecutions: 5
       Environment:
         Variables:
           SMUS_DOMAIN_ID: !Ref SMUSDomainId
@@ -142,6 +147,7 @@ Resources:
       Timeout: 900
       Runtime: python3.13
       Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      ReservedConcurrentExecutions: 5
       Environment:
         Variables:
           SMUS_DOMAIN_ID: !Ref SMUSDomainId
@@ -173,6 +179,7 @@ Resources:
       Timeout: 900
       Runtime: python3.13
       Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      ReservedConcurrentExecutions: 5
       Environment:
         Variables:
           SMUS_DOMAIN_ID: !Ref SMUSDomainId
@@ -224,6 +231,7 @@ Resources:
       Timeout: 900
       Runtime: python3.13
       Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      ReservedConcurrentExecutions: 10
       Environment:
         Variables:
           SMUS_DOMAIN_ID: !Ref SMUSDomainId
@@ -255,6 +263,7 @@ Resources:
       Timeout: 900
       Runtime: python3.13
       Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      ReservedConcurrentExecutions: 10
       Environment:
         Variables:
           SMUS_DOMAIN_ID: !Ref SMUSDomainId
@@ -286,6 +295,7 @@ Resources:
       Timeout: 900
       Runtime: python3.13
       Role: !GetAtt SMUSCollibraIntegrationAdminRole.Arn
+      ReservedConcurrentExecutions: 10
       Environment:
         Variables:
           SMUS_DOMAIN_ID: !Ref SMUSDomainId
@@ -376,6 +386,19 @@ Resources:
         }
       RoleArn: !GetAtt StepFunctionsExecutionRole.Arn
 
+  StepFunctionsExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource:
+              - !GetAtt GlossarySyncLambda.Arn
+              - !GetAtt GlossaryHierarchyEstablisherLambda.Arn
+              - !GetAtt AssetMetadataSyncLambda.Arn
+
   StepFunctionsExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -386,17 +409,8 @@ Resources:
             Principal:
               Service: states.amazonaws.com
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: LambdaInvoke
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: lambda:InvokeFunction
-                Resource:
-                  - !GetAtt GlossarySyncLambda.Arn
-                  - !GetAtt GlossaryHierarchyEstablisherLambda.Arn
-                  - !GetAtt AssetMetadataSyncLambda.Arn
+      ManagedPolicyArns:
+        - !Ref StepFunctionsExecutionPolicy
 
   BusinessMetadataSyncWorkflowTriggerRule:
     Type: AWS::Events::Rule
@@ -406,6 +420,17 @@ Resources:
         - Arn: !Ref SMUSCollibraIntegrationBusinessMetadataSyncWorkflow
           Id: BusinessMetadataSyncWorkflowTarget
           RoleArn: !GetAtt EventsInvokeStepFunctionsRole.Arn
+
+  EventsInvokeStepFunctionsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Custom policy for EventBridge to invoke Step Functions
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: states:StartExecution
+            Resource: !Ref SMUSCollibraIntegrationBusinessMetadataSyncWorkflow
 
   EventsInvokeStepFunctionsRole:
     Type: AWS::IAM::Role
@@ -417,14 +442,8 @@ Resources:
             Principal:
               Service: events.amazonaws.com
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: StepFunctionsInvoke
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: states:StartExecution
-                Resource: !Ref SMUSCollibraIntegrationBusinessMetadataSyncWorkflow
+      ManagedPolicyArns:
+        - !Ref EventsInvokeStepFunctionsPolicy
 
   StartSubscriptionRequestSyncToSMUSLambdaTriggerRule:
     Type: AWS::Events::Rule
