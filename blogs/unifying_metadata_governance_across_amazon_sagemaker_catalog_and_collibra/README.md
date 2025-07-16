@@ -3,7 +3,7 @@
 This repository contains the instructions and Python scripts to unify metadata governance across **Amazon SageMaker
 Catalog** and **Collibra**.
 
-> 📖 **Related blog post:** [Unifying Metadata Governance Across Amazon SageMaker Catalog and Collibra](#)
+> 📖 **Related blog post:** [Unifying Metadata Governance Across Amazon SageMaker Catalog and Collibra](https://aws.amazon.com/blogs/big-data/unifying-metadata-governance-across-amazon-sagemaker-and-collibra/)
 
 ---
 
@@ -35,7 +35,7 @@ Ensure the following prerequisites are met:
 ### 🚀 Deployment Steps
 
 Follow these steps to set up metadata synchronization between Amazon SageMaker Catalog and Collibra. For a detailed
-explanation, refer to the [blog post](#).
+explanation, refer to the [blog post](https://aws.amazon.com/blogs/big-data/unifying-metadata-governance-across-amazon-sagemaker-and-collibra/).
 
 1. **Create a secret in AWS Secrets Manager**
 
