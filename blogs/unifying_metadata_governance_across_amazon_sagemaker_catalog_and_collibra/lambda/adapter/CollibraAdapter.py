@@ -103,7 +103,7 @@ class CollibraAdapter:
 
     def start_subscription_request_creation_workflow(self, asset_id: str):
         response = requests.post(
-            "https://awspoc.collibra.com/rest/2.0/workflowInstances",
+            f"https://{self.__config.url}/rest/2.0/workflowInstances",
             json={"workflowDefinitionId": COLLIBRA_SUBSCRIPTION_REQUEST_CREATION_WORKFLOW_ID,
                   "sendNotification": True,
                   "businessItemIds": [asset_id],
@@ -124,7 +124,7 @@ class CollibraAdapter:
 
     def start_subscription_request_approval_workflow(self):
         response = requests.post(
-            "https://awspoc.collibra.com/rest/2.0/workflowInstances",
+            f"https://{self.__config.url}/rest/2.0/workflowInstances",
             json={"workflowDefinitionId": COLLIBRA_SUBSCRIPTION_REQUEST_APPROVAL_WORKFLOW_ID, "sendNotification": True},
             auth=(self.__config.username, self.__config.password),
             headers={
