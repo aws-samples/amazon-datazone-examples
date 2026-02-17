@@ -4,7 +4,6 @@ from business.SMUSGlossaryCache import SMUSGlossaryCache
 from model.BusinessTermHierarchyIndex import BusinessTermHierarchyIndex
 from utils.collibra_constants import DISPLAY_NAME_KEY, INCOMING_RELATIONS_KEY, SOURCE_KEY
 
-
 class GlossaryTermHierarchyEstablisherBusinessLogic:
     def __init__(self, logger):
         self.__logger = logger

@@ -1,6 +1,6 @@
 from aws_lambda_powertools import Logger
 
-from business.GlossaryTermHierarchyEstablisherBusinessLogic import GlossaryTermHierarchyEstablisherBusinessLogic
+from business.business_metadata_sync_workflow.GlossaryTermHierarchyEstablisherBusinessLogic import GlossaryTermHierarchyEstablisherBusinessLogic
 
 logger = Logger(service="glossary_term_hierarchy_establisher")
 

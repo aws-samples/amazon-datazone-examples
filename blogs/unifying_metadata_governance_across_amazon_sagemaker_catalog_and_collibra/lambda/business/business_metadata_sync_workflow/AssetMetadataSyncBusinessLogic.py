@@ -5,11 +5,12 @@ from typing import List, Dict
 
 from adapter.CollibraAdapter import CollibraAdapter
 from adapter.SMUSAdapter import SMUSAdapter
+from business.CollibraSMUSAssetMatcher import CollibraSMUSAssetMatcher
 from business.SMUSGlossaryCache import SMUSGlossaryCache
 from model.CollibraTable import CollibraTable, CollibraColumn
 from utils.collibra_constants import DISPLAY_NAME_KEY, FULL_NAME_KEY, ID_KEY
-from utils.smus_constants import EXTERNAL_IDENTIFIER_KEY, REDSHIFT_TYPE_IDENTIFIER_INFIX, GLUE_TYPE_IDENTIFIER_INFIX, \
-    TYPE_IDENTIFIER_KEY, PII_COLUMNS_README_HEADING, GLOSSARY_TERMS_KEY, ASSET_COMMON_DETAILS_FORM, FORM_NAME_KEY, \
+from utils.smus_constants import PII_COLUMNS_README_HEADING, GLOSSARY_TERMS_KEY, ASSET_COMMON_DETAILS_FORM, \
+    FORM_NAME_KEY, \
     CONTENT_KEY, README_KEY, ASSET_ITEM_KEY, IDENTIFIER_KEY
 
 
@@ -19,6 +20,7 @@ class AssetMetadataSyncBusinessLogic:
         self.__smus_adapter = SMUSAdapter(logger)
         self.__collibra_adapter = CollibraAdapter(logger)
         self.__smus_glossary_cache = SMUSGlossaryCache(logger)
+        self.__projects_ids = [project['id'] for project in self.__smus_adapter.list_all_projects()]
 
     def sync(self, last_seen_asset_id: str):
         start_time = datetime.now()
@@ -87,43 +89,22 @@ class AssetMetadataSyncBusinessLogic:
 
         return filtered_tables, last_seen_id
 
-    def __extract_redshift_database_schema_table_names(self, table_full_name):
-        database, schema, table = table_full_name.rsplit('>', 3)[1:]
-        return database, schema, table
-
-    def __get_redshift_external_identifier_suffix(self, type_identifier, database, schema, table):
-        if "view" in type_identifier.lower():
-            return f"{database}:{schema}:VIEW:{table}"
-
-        return f"{database}:{schema}:TABLE:{table}"
-
-    def __extract_glue_database_table_names(self, table_full_name):
-        database, table = table_full_name.rsplit('>', 2)[1:]
-        return database, table
-
-    def __get_glue_external_identifier_suffix(self, database, table):
-        return f"{database}/{table}"
-
     def __find_smus_table_asset_ids(self, table) -> List[str]:
-        assets = self.__smus_adapter.search_all_assets_by_name(table[DISPLAY_NAME_KEY])
+        assets = self.__get_all_assets_by_name(table[DISPLAY_NAME_KEY])
         matching_assets_in_smus = []
         for asset in assets:
             get_asset_response = self.__smus_adapter.get_asset(asset[ASSET_ITEM_KEY][IDENTIFIER_KEY])
-            if EXTERNAL_IDENTIFIER_KEY in get_asset_response:
-                if REDSHIFT_TYPE_IDENTIFIER_INFIX in get_asset_response[TYPE_IDENTIFIER_KEY]:
-                    database, schema, table_name = self.__extract_redshift_database_schema_table_names(
-                        table[FULL_NAME_KEY])
-                    if self.__get_redshift_external_identifier_suffix(get_asset_response[TYPE_IDENTIFIER_KEY], database,
-                                                                      schema,
-                                                                      table_name) in get_asset_response[
-                        EXTERNAL_IDENTIFIER_KEY]:
-                        matching_assets_in_smus.append(get_asset_response[ID_KEY])
-                elif GLUE_TYPE_IDENTIFIER_INFIX in get_asset_response[TYPE_IDENTIFIER_KEY]:
-                    database, table_name = self.__extract_glue_database_table_names(table[FULL_NAME_KEY])
-                    if self.__get_glue_external_identifier_suffix(database, table_name) in get_asset_response[
-                        EXTERNAL_IDENTIFIER_KEY]:
-                        matching_assets_in_smus.append(get_asset_response[ID_KEY])
+            if CollibraSMUSAssetMatcher.match(get_asset_response, table):
+                self.__logger.info(
+                    f" SMUS asset {get_asset_response["name"]} matched with Collibra asset {table[DISPLAY_NAME_KEY]}")
+                matching_assets_in_smus.append(get_asset_response[ID_KEY])
         return matching_assets_in_smus
+
+    def __get_all_assets_by_name(self, asset_name):
+        assets = []
+        for project_id in self.__projects_ids:
+            assets.extend(self.__smus_adapter.search_all_assets_by_name(asset_name, project_id))
+        return assets
 
     @classmethod
     def __create_table_readme_with_data_category_columns(cls, collibra_table: CollibraTable):
@@ -165,6 +146,7 @@ class AssetMetadataSyncBusinessLogic:
         for forms_output in smus_asset['formsOutput']:
             forms_output['typeIdentifier'] = forms_output['typeName']
             del forms_output['typeName']
+            del forms_output['typeRevision']
             forms_input.append(forms_output)
         return forms_input
 

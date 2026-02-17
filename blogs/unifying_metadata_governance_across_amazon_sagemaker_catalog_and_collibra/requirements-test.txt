@@ -1,0 +1,8 @@
+# Test dependencies for SMUS-Collibra Integration
+
+# Include main dependencies
+-r requirements.txt
+
+# Testing frameworks
+pytest==8.3.4
+pytest-cov==6.0.0

@@ -2,13 +2,16 @@ from typing import List
 
 from business.AWSClientFactory import AWSClientFactory
 from utils.common_utils import get_collibra_synced_glossary_name, wait_until
-from utils.env_utils import SMUS_DOMAIN_ID, SMUS_PRODUCER_PROJECT_ID, SMUS_CONSUMER_PROJECT_ID
+from utils.env_utils import SMUS_DOMAIN_ID, SMUS_GLOSSARY_OWNER_PROJECT_ID, \
+    SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN
+from utils.smus_constants import ACTIVATED_USER_STATUS
 
 
 class SMUSAdapter:
     def __init__(self, logger):
         self.__logger = logger
         self.__client = AWSClientFactory.create('datazone')
+        self.__admin_role_user_id = self.__find_admin_role_user_id()
 
     def get_project(self, project_id):
         return self.__client.get_project(
@@ -35,7 +38,7 @@ class SMUSAdapter:
             description='Glossary for terms synced from Collibra',
             domainIdentifier=SMUS_DOMAIN_ID,
             name=get_collibra_synced_glossary_name(),
-            owningProjectIdentifier=SMUS_PRODUCER_PROJECT_ID,
+            owningProjectIdentifier=SMUS_GLOSSARY_OWNER_PROJECT_ID,
             status='ENABLED'
         )
 
@@ -73,12 +76,12 @@ class SMUSAdapter:
             status='ENABLED', **self.__get_description_args_of_glossary_term(descriptions)
         )
 
-    def search_all_assets_by_name(self, table_name: str):
+    def search_all_assets_by_name(self, table_name: str, project_id: str):
         items = []
         next_token = None
         has_more_items = True
         while has_more_items:
-            search_response = self.search_asset_by_name(table_name, next_token)
+            search_response = self.search_asset_by_name(table_name, project_id, next_token)
             items.extend(search_response['items'])
             next_token = search_response.get('nextToken', None)
 
@@ -86,10 +89,13 @@ class SMUSAdapter:
                 has_more_items = False
         return items
 
-    def search_asset_by_name(self, table_name: str, next_token: str = None):
-        args = {"searchScope": 'ASSET', "owningProjectIdentifier": SMUS_PRODUCER_PROJECT_ID,
+    def search_asset_by_name(self, table_name: str, project_id: str, next_token: str = None):
+        args = {"searchScope": 'ASSET', "owningProjectIdentifier": project_id,
                 "domainIdentifier": SMUS_DOMAIN_ID,
-                "searchText": table_name
+                "additionalAttributes": ["FORMS"],
+                "searchIn": [{"attribute": "RedshiftTableForm.tableName"}, {"attribute": "GlueTableForm.tableName"}],
+                "searchText": table_name,
+                "maxResults": 50,
                 }
 
         if next_token:
@@ -97,12 +103,12 @@ class SMUSAdapter:
 
         return self.__client.search(**args)
 
-    def search_all_listings(self, search_text: str = None):
+    def search_all_listings(self, project_id: str, search_text: str = None):
         items = []
         next_token = None
         has_more_items = True
         while has_more_items:
-            search_response = self.search_listings(search_text, next_token)
+            search_response = self.search_listings(project_id, search_text, next_token)
             items.extend(search_response['items'])
             next_token = search_response.get('nextToken', None)
 
@@ -110,11 +116,11 @@ class SMUSAdapter:
                 has_more_items = False
         return items
 
-    def search_listings(self, search_text: str = None, next_token: str = None):
+    def search_listings(self, project_id: str, search_text: str = None, next_token: str = None):
         args = {"domainIdentifier": SMUS_DOMAIN_ID,
                 "additionalAttributes": ["FORMS"],
                 "filters": {
-                    "and": [{"filter": {"attribute": "owningProjectId", "value": SMUS_PRODUCER_PROJECT_ID}},
+                    "and": [{"filter": {"attribute": "owningProjectId", "value": project_id}},
                             {"filter": {"attribute": "amazonmetadata.sourceCategory", "value": "asset"}}]}
                 }
 
@@ -185,7 +191,7 @@ class SMUSAdapter:
         response['members'] = sso_users
         return response
 
-    def get_sso_user_profile(self, user_id: str):
+    def get_user_profile(self, user_id: str):
         return self.__client.get_user_profile(
             domainIdentifier=SMUS_DOMAIN_ID,
             userIdentifier=user_id
@@ -211,7 +217,7 @@ class SMUSAdapter:
             status='ENABLED',
         )
 
-    def create_subscription_request(self, listing_id: str):
+    def create_subscription_request(self, listing_id: str, consumer_project_id: str):
         return self.__client.create_subscription_request(
             domainIdentifier=SMUS_DOMAIN_ID,
             requestReason='Automated sync - Subscription request created from Collibra',
@@ -223,28 +229,31 @@ class SMUSAdapter:
             subscribedPrincipals=[
                 {
                     'project': {
-                        'identifier': SMUS_CONSUMER_PROJECT_ID
+                        'identifier': consumer_project_id
                     }
                 },
             ]
         )
 
-    def search_subscription_requests(self, listing_id: str):
-        return self.__client.list_subscription_requests(
-            approverProjectId=SMUS_PRODUCER_PROJECT_ID,
+    def search_subscription_requests(self, listing_id: str, owning_project_id: str, consumer_project_id: str):
+        subscription_requests = self.__client.list_subscription_requests(
+            approverProjectId=owning_project_id,
             domainIdentifier=SMUS_DOMAIN_ID,
-            owningProjectId=SMUS_CONSUMER_PROJECT_ID,
+            owningProjectId=consumer_project_id,
             status='ACCEPTED',
             sortBy='UPDATED_AT',
             sortOrder='DESCENDING',
             subscribedListingId=listing_id
         )['items']
 
-    def search_approved_subscription_for_subscription_request_id(self, subscription_request_id):
+        sorted_subscription_requests = sorted(subscription_requests, key=lambda item: item['updatedAt'], reverse=True)
+        return sorted_subscription_requests
+
+    def search_approved_subscription_for_subscription_request_id(self, subscription_request_id: str, owning_project_id: str, consumer_project_id: str):
         return self.__client.list_subscriptions(
-            approverProjectId=SMUS_PRODUCER_PROJECT_ID,
+            approverProjectId=owning_project_id,
             domainIdentifier=SMUS_DOMAIN_ID,
-            owningProjectId=SMUS_CONSUMER_PROJECT_ID,
+            owningProjectId=consumer_project_id,
             status='APPROVED',
             subscriptionRequestIdentifier=subscription_request_id
         )['items']
@@ -256,6 +265,63 @@ class SMUSAdapter:
             identifier=subscription_request_id
         )
 
+    def list_all_projects(self):
+        items = []
+        next_token = None
+        has_more_items = True
+        while has_more_items:
+            search_response = self.list_projects(50, next_token)
+            for project in search_response['items']:
+                if project["projectStatus"] == "ACTIVE":
+                    items.append(project)
+            next_token = search_response.get('nextToken', None)
+
+            if not next_token or len(search_response['items']) == 0:
+                has_more_items = False
+        return items
+
+    def list_projects(self, max_results: int, next_token: str = None):
+        args = {
+            'domainIdentifier': SMUS_DOMAIN_ID,
+            'maxResults': max_results,
+            'userIdentifier': self.__admin_role_user_id
+        }
+
+        if next_token:
+            args['nextToken'] = next_token
+
+        return self.__client.list_projects(**args)
+
+    def __find_admin_role_user_id(self):
+        has_more_items = True
+        next_token = None
+        admin_role_user_id = None
+        while has_more_items:
+            args = {
+                'domainIdentifier': SMUS_DOMAIN_ID,
+                'maxResults': 50,
+                'searchText': SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN,
+                'userType': 'DATAZONE_IAM_USER'
+            }
+
+            if next_token:
+                args['nextToken'] = next_token
+
+            search_user_profiles_response = self.__client.search_user_profiles(**args)
+
+            for user_profile in search_user_profiles_response['items']:
+                if user_profile['status'] == ACTIVATED_USER_STATUS and user_profile['details']['iam']['arn'] == SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN:
+                    admin_role_user_id = user_profile['id']
+                    break
+
+            if admin_role_user_id is None and 'nextToken' in search_user_profiles_response:
+                next_token = search_user_profiles_response['nextToken']
+            else:
+                has_more_items = False
+
+        return admin_role_user_id
+
+
     def __get_description_args_of_glossary_term(self, term_descriptions: List[str]):
         description_args = {}
         if not term_descriptions:
@@ -263,5 +329,5 @@ class SMUSAdapter:
         elif len(term_descriptions) == 1 and len(term_descriptions[0]) <= 1024:
             description_args['shortDescription'] = term_descriptions[0]
         else:
-            description_args['longDescription'] = '\n\n'.join(term_descriptions)
+            description_args['longDescription'] = '\n\n'.join(term_descriptions)[:4096]
         return description_args

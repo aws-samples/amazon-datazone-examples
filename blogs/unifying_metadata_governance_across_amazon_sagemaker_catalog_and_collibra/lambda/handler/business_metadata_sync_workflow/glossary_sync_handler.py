@@ -1,6 +1,6 @@
 from aws_lambda_powertools import Logger
 
-from business.GlossarySyncBusinessLogic import GlossarySyncBusinessLogic
+from business.business_metadata_sync_workflow.GlossarySyncBusinessLogic import GlossarySyncBusinessLogic
 
 logger = Logger(service="collibra_smus_sync_handler")
 
