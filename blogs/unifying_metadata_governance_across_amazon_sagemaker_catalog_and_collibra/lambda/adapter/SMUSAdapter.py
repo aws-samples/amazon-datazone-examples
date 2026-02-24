@@ -8,6 +8,12 @@ from utils.smus_constants import ACTIVATED_USER_STATUS
 
 
 class SMUSAdapter:
+    GLOSSARY_TERM_SHORT_DESCRIPTION_MAX_LENGTH = 1024
+    GLOSSARY_TERM_LONG_DESCRIPTION_MAX_LENGTH = 4096
+    MAX_RESULTS = 50
+    SLEEP_INTERVAL = 2
+    MAX_TIME_TO_WAIT = 5
+
     def __init__(self, logger):
         self.__logger = logger
         self.__client = AWSClientFactory.create('datazone')
@@ -42,7 +48,7 @@ class SMUSAdapter:
             status='ENABLED'
         )
 
-        wait_until(2, 5, self.__logger, "Waiting for glossary to create", None)
+        wait_until(SMUSAdapter.SLEEP_INTERVAL, SMUSAdapter.MAX_TIME_TO_WAIT, self.__logger, "Waiting for glossary to create", None)
         return response['id']
 
     def search_glossary_term_by_name(self, glossary_id: str, glossary_term_name: str):
@@ -51,7 +57,7 @@ class SMUSAdapter:
                                      filters={"filter": {"attribute": "BusinessGlossaryTermForm.businessGlossaryId",
                                                        "value": glossary_id}},
                                      searchText=glossary_term_name,
-                                     maxResults=50
+                                     maxResults=SMUSAdapter.MAX_RESULTS
                                      )['items']
 
         if terms:
@@ -85,7 +91,7 @@ class SMUSAdapter:
             items.extend(search_response['items'])
             next_token = search_response.get('nextToken', None)
 
-            if not next_token or len(search_response['items']) == 0:
+            if not next_token:
                 has_more_items = False
         return items
 
@@ -95,7 +101,7 @@ class SMUSAdapter:
                 "additionalAttributes": ["FORMS"],
                 "searchIn": [{"attribute": "RedshiftTableForm.tableName"}, {"attribute": "GlueTableForm.tableName"}],
                 "searchText": table_name,
-                "maxResults": 50,
+                "maxResults": SMUSAdapter.MAX_RESULTS,
                 }
 
         if next_token:
@@ -112,7 +118,7 @@ class SMUSAdapter:
             items.extend(search_response['items'])
             next_token = search_response.get('nextToken', None)
 
-            if not next_token or len(search_response['items']) == 0:
+            if not next_token:
                 has_more_items = False
         return items
 
@@ -141,7 +147,7 @@ class SMUSAdapter:
             items.extend(search_response['items'])
             next_token = search_response.get('nextToken', None)
 
-            if not next_token or len(search_response['items']) == 0:
+            if not next_token:
                 has_more_items = False
         return items
 
@@ -151,7 +157,7 @@ class SMUSAdapter:
             "domainIdentifier": SMUS_DOMAIN_ID,
             "filters": {"filter": {"attribute": "BusinessGlossaryTermForm.businessGlossaryId",
                                    "value": glossary_id}},
-            "maxResults": 50,
+            "maxResults": SMUSAdapter.MAX_RESULTS,
         }
 
         if next_token:
@@ -168,7 +174,7 @@ class SMUSAdapter:
             items.extend(search_response['members'])
             next_token = search_response.get('nextToken', None)
 
-            if not next_token or len(search_response['members']) == 0:
+            if not next_token:
                 has_more_items = False
         return items
 
@@ -176,7 +182,7 @@ class SMUSAdapter:
         args = {
             "domainIdentifier":SMUS_DOMAIN_ID,
             "projectIdentifier":project_id,
-            "maxResults": 50
+            "maxResults": SMUSAdapter.MAX_RESULTS
         }
 
         if next_token:
@@ -270,13 +276,13 @@ class SMUSAdapter:
         next_token = None
         has_more_items = True
         while has_more_items:
-            search_response = self.list_projects(50, next_token)
+            search_response = self.list_projects(SMUSAdapter.MAX_RESULTS, next_token)
             for project in search_response['items']:
                 if project["projectStatus"] == "ACTIVE":
                     items.append(project)
             next_token = search_response.get('nextToken', None)
 
-            if not next_token or len(search_response['items']) == 0:
+            if not next_token:
                 has_more_items = False
         return items
 
@@ -299,7 +305,7 @@ class SMUSAdapter:
         while has_more_items:
             args = {
                 'domainIdentifier': SMUS_DOMAIN_ID,
-                'maxResults': 50,
+                'maxResults': SMUSAdapter.MAX_RESULTS,
                 'searchText': SMUS_COLLIBRA_INTEGRATION_ADMIN_ROLE_ARN,
                 'userType': 'DATAZONE_IAM_USER'
             }
@@ -326,8 +332,8 @@ class SMUSAdapter:
         description_args = {}
         if not term_descriptions:
             pass
-        elif len(term_descriptions) == 1 and len(term_descriptions[0]) <= 1024:
+        elif len(term_descriptions) == 1 and len(term_descriptions[0]) <= SMUSAdapter.GLOSSARY_TERM_SHORT_DESCRIPTION_MAX_LENGTH:
             description_args['shortDescription'] = term_descriptions[0]
         else:
-            description_args['longDescription'] = '\n\n'.join(term_descriptions)[:4096]
+            description_args['longDescription'] = '\n\n'.join(term_descriptions)[:SMUSAdapter.GLOSSARY_TERM_LONG_DESCRIPTION_MAX_LENGTH]
         return description_args
