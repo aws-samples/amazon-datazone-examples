@@ -8,12 +8,13 @@ from model.CollibraAssetType import CollibraAssetType
 from model.CollibraConfig import CollibraConfig
 from utils.env_utils import COLLIBRA_CONFIG_SECRETS_NAME, COLLIBRA_SUBSCRIPTION_REQUEST_CREATION_WORKFLOW_ID, \
     COLLIBRA_AWS_PROJECT_TYPE_ID, COLLIBRA_AWS_PROJECT_DOMAIN_ID, COLLIBRA_AWS_PROJECT_ATTRIBUTE_TYPE_ID, \
-    COLLIBRA_SUBSCRIPTION_REQUEST_APPROVAL_WORKFLOW_ID, COLLIBRA_AWS_USER_TYPE_ID, COLLIBRA_AWS_USER_DOMAIN_ID, \
+    COLLIBRA_AWS_USER_TYPE_ID, COLLIBRA_AWS_USER_DOMAIN_ID, \
     COLLIBRA_AWS_USER_PROJECT_ATTRIBUTE_TYPE_ID
 from utils.queries import GET_BUSINESS_TERMS_QUERY, GET_BUSINESS_TERMS_WITH_CURSOR_QUERY, GET_AWS_TABLE_ASSETS_QUERY, \
     GET_AWS_TABLE_ASSETS_WITH_CURSOR_QUERY, GET_AWS_TABLE_ASSET_QUERY, GET_PII_COLUMNS_QUERY, \
     GET_AWS_TABLE_BUSINESS_TERMS_QUERY, GET_BUSINESS_TERM_HIERARCHY_QUERY, GET_TABLE_BY_NAME_QUERY, \
-    GET_SUBSCRIPTION_REQUESTS_BY_STATUS_QUERY, GET_ASSET_BY_NAME_QUERY, GET_ASSET_BY_NAME_AND_TYPE_QUERY
+    GET_SUBSCRIPTION_REQUESTS_BY_STATUS_QUERY, \
+    GET_ASSET_AND_STRING_ATTRIBUTES_BY_NAME_AND_TYPE_QUERY, GET_ASSET_BY_NAME_AND_TYPE_QUERY
 
 
 class CollibraAdapter:
@@ -101,13 +102,16 @@ class CollibraAdapter:
             raise Exception(
                 f"Failed to fetch PII columns for table with id {table_id} from Collibra. Error: {response.text}")
 
-    def start_subscription_request_creation_workflow(self, asset_id: str):
+    def start_subscription_request_creation_workflow(self, asset_id: str, consumer_project_name: str):
+        url = CollibraAdapter.COLLIBRA_REST_URL_FORMAT.format(collibra_config_url=self.__config.url, resource="workflowInstances")
         response = requests.post(
-            f"https://{self.__config.url}/rest/2.0/workflowInstances",
+            url,
             json={"workflowDefinitionId": COLLIBRA_SUBSCRIPTION_REQUEST_CREATION_WORKFLOW_ID,
                   "sendNotification": True,
                   "businessItemIds": [asset_id],
-                  "businessItemType": "ASSET"},
+                  "businessItemType": "ASSET",
+                  "formProperties": {"aws_consumer_project_name":consumer_project_name}
+                  },
             auth=(self.__config.username, self.__config.password),
             headers={
                 "Content-Type": "application/json",
@@ -121,24 +125,6 @@ class CollibraAdapter:
         else:
             raise Exception(
                 f"Failed to start subscription workflow in collibra for collibra asset with id {asset_id}. Error: {response.text}.")
-
-    def start_subscription_request_approval_workflow(self):
-        response = requests.post(
-            f"https://{self.__config.url}/rest/2.0/workflowInstances",
-            json={"workflowDefinitionId": COLLIBRA_SUBSCRIPTION_REQUEST_APPROVAL_WORKFLOW_ID, "sendNotification": True},
-            auth=(self.__config.username, self.__config.password),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS
-        )
-
-        if self.__is_response_status_ok(response.status_code):
-            return response.json()
-        else:
-            raise Exception(
-                f"Failed to start subscription request approval workflow in collibra. Error: {response.text}.")
 
     def get_subscription_requests_by_status(self, status):
         payload = {"query": GET_SUBSCRIPTION_REQUESTS_BY_STATUS_QUERY, "variables": {"status": status}}
@@ -181,7 +167,7 @@ class CollibraAdapter:
         return self.create_aws_project(project_name, smus_project_id)
 
     def get_aws_project(self, project_name):
-        payload = {"query": GET_ASSET_BY_NAME_QUERY, "variables": {"assetName": project_name}}
+        payload = {"query": GET_ASSET_BY_NAME_AND_TYPE_QUERY, "variables": {"assetName": project_name, "typeId": COLLIBRA_AWS_PROJECT_TYPE_ID}}
         response = self.__call_collibra_graphql_api(payload)
 
         if self.__is_response_status_ok(response.status_code):
@@ -240,7 +226,7 @@ class CollibraAdapter:
         return self.create_aws_user(username)
 
     def get_aws_user(self, username):
-        payload = {"query": GET_ASSET_BY_NAME_AND_TYPE_QUERY,
+        payload = {"query": GET_ASSET_AND_STRING_ATTRIBUTES_BY_NAME_AND_TYPE_QUERY,
                    "variables": {"assetName": username, "type": COLLIBRA_AWS_USER_TYPE_ID,
                                  "stringAttributeType": COLLIBRA_AWS_USER_PROJECT_ATTRIBUTE_TYPE_ID}}
         response = self.__call_collibra_graphql_api(payload)
@@ -282,7 +268,30 @@ class CollibraAdapter:
         response = requests.post(url, auth=(self.__config.username, self.__config.password), json=payload,
                                  timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS)
 
-        return response.json()
+        if self.__is_response_status_ok(response.status_code):
+            return response.json()
+        else:
+            raise Exception(f"Failed to add attributes for user {user_id} to Collibra")
+
+    def update_subscription_request_status(self, subscription_request_id: str, status_id: str):
+        url = CollibraAdapter.COLLIBRA_REST_URL_FORMAT.format(collibra_config_url=self.__config.url,
+                                                              resource=f"assets/{subscription_request_id}")
+        payload = {
+            "statusId": status_id
+        }
+
+        response = requests.patch(url, auth=(self.__config.username, self.__config.password), json=payload,
+                                  headers={
+                                      "Content-Type": "application/json",
+                                      "Accept": "application/json",
+                                  },
+                                  timeout=CollibraAdapter.DEFAULT_API_TIMEOUT_IN_SECONDS)
+
+        if self.__is_response_status_ok(response.status_code):
+            return response.json()
+        else:
+            raise Exception(
+                f"Failed to update subscription request status for subscription request id {subscription_request_id}")
 
     @classmethod
     def __get_authorization_token(cls, config: CollibraConfig):

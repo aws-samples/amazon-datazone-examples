@@ -44,15 +44,21 @@ query Assets {
         order: { id: asc }
         where: {
             type: { publicId: { eq: "Table" } }
-            fullName: {
-                startsWith: "AWS"
-                notContains: ">pg_"
+            fullName: { startsWith: "AWS", notContains: ">pg_" }
+            stringAttributes: {
+                any: { type: { name: { eq: "AWS Resource Metadata" } } }
             }
         }
     ) {
         id
         fullName
         displayName
+        stringAttributes(where: { type: { name: { eq: "AWS Resource Metadata" } } }) {
+            stringValue
+            type {
+                name
+            }
+        }
     }
 }
 """
@@ -69,11 +75,20 @@ query Assets($lastSeenId: UUID!) {
                 startsWith: "AWS"
                 notContains: ">pg_"
             }
+            stringAttributes: {
+                any: { type: { name: { eq: "AWS Resource Metadata" } } }
+            }
         }
     ) {
         id
         fullName
         displayName
+        stringAttributes(where: { type: { name: { eq: "AWS Resource Metadata" } } }) {
+            stringValue
+            type {
+                name
+            }
+        }
     }
 }
 """
@@ -228,18 +243,28 @@ query Assets($status: String!) {
         displayName
         outgoingRelations(
             limit: 1
-            where: {
-                target: { fullName: { startsWith: "AWS" } }
-            }
+            where: { target: { fullName: { startsWith: "AWS" } } }
         ) {
             target {
+                id
                 fullName
                 displayName
+                stringAttributes(where: { type: { name: { eq: "AWS Resource Metadata" } } }) {
+                    stringValue
+                    type {
+                        name
+                    }
+                }
+            }
+        }
+        stringAttributes(where: { type: { name: { in: ["AWS Producer Project Id", "AWS Consumer Project Id"] } } }) {
+            stringValue
+            type {
+                name
             }
         }
     }
 }
-
 """
 
 GET_ASSET_BY_NAME_QUERY = """
@@ -257,21 +282,30 @@ query Assets($assetName: String!) {
 }
 """
 
-
 GET_ASSET_BY_NAME_AND_TYPE_QUERY = """
-query Assets($assetName: String!, $type: UUID!, $stringAttributeType: String!) {
+query Assets($assetName: String!, $typeId: UUID!) {
+    assets(limit: 1, where: { displayName: { eq: $assetName } type: {id: { eq: $typeId}}}) {
+        id
+        fullName
+        displayName
+    }
+}
+"""
+
+
+GET_ASSET_AND_STRING_ATTRIBUTES_BY_NAME_AND_TYPE_QUERY = """
+query Assets($assetName: String!, $type: UUID!, $stringAttributeType: UUID!) {
     assets(
         limit: 1
         where: {
             displayName: { eq: $assetName }
             type: { id: { eq: $type } }
-            stringAttributes: { typePublicId: $stringAttributeType }
         }
     ) {
         id
         fullName
         displayName
-        stringAttributes {
+        stringAttributes(where: {type: {id: {eq: $stringAttributeType}}}) {
             id
             stringValue
         }

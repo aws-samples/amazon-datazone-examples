@@ -33,6 +33,7 @@ class BusinessTermHierarchyIndex:
         return self.__index[term_name].get_entry()
 
     class IndexEntry:
+        __MAX_RELATIONS = 10
         def __init__(self):
             self.__isA = []
             self.__classifies = []
@@ -46,7 +47,7 @@ class BusinessTermHierarchyIndex:
         def get_entry(self):
             entry = dict()
             if self.__isA:
-                entry['isA'] = self.__isA
+                entry['isA'] = self.__isA[:BusinessTermHierarchyIndex.IndexEntry.__MAX_RELATIONS]
             if self.__classifies:
-                entry['classifies'] = self.__classifies
+                entry['classifies'] = self.__classifies[:BusinessTermHierarchyIndex.IndexEntry.__MAX_RELATIONS]
             return entry

@@ -1,6 +1,6 @@
 from aws_lambda_powertools import Logger
 
-from business.AssetMetadataSyncBusinessLogic import AssetMetadataSyncBusinessLogic
+from business.business_metadata_sync_workflow.AssetMetadataSyncBusinessLogic import AssetMetadataSyncBusinessLogic
 
 logger = Logger(service="asset_metadata_sync")
 

@@ -74,6 +74,29 @@ explanation, refer to the [blog post](https://aws.amazon.com/blogs/big-data/unif
     - A Producer project member
     - A Consumer project member
 
+---
+
+## 🧪 Testing
+
+### Running Tests
+
+1. **Install test dependencies:**
+   ```bash
+   pip install -r requirements-test.txt
+   ```
+
+2. **Run all tests:**
+   ```bash
+   pytest
+   ```
+
+3. **Run tests with coverage:**
+   ```bash
+   pytest --cov=lambda --cov-report=term
+   ```
+
+---
+
 ### 🚀 Workflow deployment in Collibra
 
 Follow these steps to import and configure the workflows in Collibra:
