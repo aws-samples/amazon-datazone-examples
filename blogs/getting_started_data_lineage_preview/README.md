@@ -1,4 +1,9 @@
 # Data Lineage - Getting Started
+
+
+> [DISCLAIMER]: Most of the content below on writing/executing scripts is no longer applicable after Data Lineage GA launch in Nov 2024. Most of the manual steps for publishing lineage are removed with the GA launch. Please refer to https://docs.aws.amazon.com/sagemaker-unified-studio/latest/userguide/datazone-data-lineage.html for more details.
+
+
 These are the instructions and getting started Python scripts for extracting and loading data lineage (preview) into Amazon DataZone. To view data lineage for data assets in the Amazon DataZone Portal, the data assets must be used as input to or output forom the processes that generate the data lienage.
 
 * Blog article: [Amazon DataZone introduces OpenLineage-compatible data lineage visualization in preview](https://aws.amazon.com/blogs/big-data/amazon-datazone-introduces-openlineage-compatible-data-lineage-visualization-in-preview)
